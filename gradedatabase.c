@@ -33,7 +33,11 @@ int id_array[CLASS_SIZE];
 int menu(void);
 int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
 int view_data(void);
+int edit_data(int id_number);
+int locate_data(int id_number);
 int delete_data(int id_number);
+int validinput();
+int locator(int id_number);
 
 /*
  * main: program loop
@@ -59,15 +63,11 @@ int main(void)
             /* Read three grades, re-prompt on bad input or out-of-range values */
             {
                 int valid = 0;    /* flag: grades are valid */
-                int ret2;
 
                 do {
                     printf("Enter 3 grades: ");
 
-                    /* scanf returns the number of successful conversions */
-                    ret2 = scanf("%d %d %d", &g1, &g2, &g3);
-
-                    if (ret2 != 3) {
+                    if (scanf("%d %d %d", &g1, &g2, &g3) != 3) {
                         printf("Invalid input. Please enter three integer grades.\n");
                         int c; while ((c = getchar()) != '\n' && c != EOF); /* clear bad input */
                         continue; /* try again */
@@ -95,19 +95,32 @@ int main(void)
             system("cls");
             break;
 
-        case 3:  /* Delete a record by ID */
+        case 3:
+            system("cls");
+            printf("input ID # to be edited: ");
+            id_number = validinput();
+            edit_data(id_number);
+            view_data();
+            system("pause");
+            system("cls");            
+            break;
+
+        case 4:
+            system("cls");
+            printf("input ID # to be located: ");
+            id_number = validinput();
+            locate_data(id_number);
+            system("pause");
+            system("cls");
+            break;
+
+        case 5:  /* Delete a record by ID */
             system("cls");
             view_data();
             printf("input ID # to be deleted: ");
 
             /* Validate delete input so letters don't crash the program */
-            if (scanf("%d", &id_number) != 1) {
-                printf("Invalid ID input.\n");
-                int c; while ((c = getchar()) != '\n' && c != EOF); /* clear rest */
-                system("pause");
-                system("cls");
-                break;
-            }
+            id_number = validinput();
 
             delete_data(id_number);
             view_data();
@@ -115,7 +128,7 @@ int main(void)
             system("cls");
             break;
 
-        case 4:  /* Exit */
+        case 6:  /* Exit */
             printf("Thank you for using the program.\n");
             isRunning = 0;
             break;
@@ -141,7 +154,7 @@ int menu(void)
     int ret;
 
     printf("=== STUDENT DATABASE ===\n");
-    printf("[1] Add Student\n[2] View Database\n[3] Remove Student\n[4] Exit\n\nSelect option: ");
+    printf("[1] Add Student\n[2] View Database\n[3] Edit Database\n[4] Locate Student\n[5] Remove Student\n[6] Exit\n\nSelect option: ");
 
     ret = scanf("%d", &option);
 
@@ -200,11 +213,67 @@ int view_data(void)
     for (size_t i = 0; i <= last; i++) {
         average = (grades[i][0] + grades[i][1] + grades[i][2]) / 3.0f;
         printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-               id_array[i], student[i], grades[i][0], grades[i][1], grades[i][2],
-               average, (average >= 75.0f) ? "Passed" : "Failed");
+                id_array[i], student[i], grades[i][0], grades[i][1], grades[i][2],
+                average, (average >= 75.0f) ? "Passed" : "Failed");
         printf("-----------------------------------------------------------------------\n");
     }
 
+    return 0;
+}
+
+int edit_data(int id_number)
+{
+
+    int toEdit = locator(id_number);
+
+    if (toEdit == -1) {
+        printf("ID %d not found.\n", id_number);
+        return 0;
+    }
+
+    {
+        int valid = 0;    /* flag: grades are valid */
+
+        do {
+            printf("Enter 3 grades: ");
+
+            if (scanf("%d %d %d", &grades[toEdit][0], &grades[toEdit][1], &grades[toEdit][2]) != 3) {
+                printf("Invalid input. Please enter three integer grades.\n");
+                int c; while ((c = getchar()) != '\n' && c != EOF); /* clear bad input */
+                continue; /* try again */
+            }
+
+            /* check grades are in 0..100 */
+            if (grades[toEdit][0] >= 0 && grades[toEdit][0] <= 100 && grades[toEdit][1] >= 0 && grades[toEdit][1] <= 100 && grades[toEdit][2] >= 0 && grades[toEdit][2] <= 100) {
+                valid = 1;
+            } else {
+                printf("Invalid grades. Please try again.\n");
+                int c; while ((c = getchar()) != '\n' && c != EOF); /* clear rest */
+            }
+        } while (!valid);
+    }
+    return 0;
+}
+
+int locate_data(int id_number)
+{
+    int toFind = locator(id_number);
+
+    if (toFind == -1) {
+        printf("ID %d not found.\n", id_number);
+        return 0;
+    }
+
+    printf("--- STUDENT RECORDS ---\n");
+    printf("-----------------------------------------------------------------------\n");
+    printf("ID | Name             | Math | Sci | Eng | Average | Remarks\n");
+    printf("-----------------------------------------------------------------------\n");
+
+        int average = (grades[toFind][0] + grades[toFind][1] + grades[toFind][2]) / 3.0f;
+        printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
+                id_array[toFind], student[toFind], grades[toFind][0], grades[toFind][1], grades[toFind][2],
+                average, (average >= 75.0f) ? "Passed" : "Failed");
+        printf("-----------------------------------------------------------------------\n");
     return 0;
 }
 
@@ -224,14 +293,7 @@ int delete_data(int id_number)
         return 0;
     }
 
-    /* find the record matching the ID */
-    int todelete = -1;
-    for (int i = 0; i <= last; i++) {
-        if (id_array[i] == id_number) {
-            todelete = i;
-            break;
-        }
-    }
+    int todelete = locator(id_number);
 
     if (todelete == -1) {
         printf("ID %d not found.\n", id_number);
@@ -256,4 +318,32 @@ int delete_data(int id_number)
 
     printf("ID %d was deleted from the database.\n", id_number);
     return 0;
+}
+
+int validinput(){
+    int valid = 0;
+    int input;
+
+    do {
+        if (scanf(" %d", &input) != 1) {
+            printf("Invalid input.\nenter value: ");
+            int c; while ((c = getchar()) != '\n' && c != EOF); /* clear bad input */
+            continue; /* try again */
+        }
+        valid = 1;
+    } while (!valid);
+    return input;
+}
+
+int locator(int id_number)
+{
+    /* find the record matching the ID */
+    int toFind = -1;
+    for (int i = 0; i <= last; i++) {
+        if (id_array[i] == id_number) {
+            toFind = i;
+            break;
+        }
+    }
+    return toFind;
 }
