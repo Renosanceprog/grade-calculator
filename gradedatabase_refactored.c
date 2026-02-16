@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h> // for system()
+#include <ctype.h> // Required for tolower()
 
 // === Configuration =======================================================
 #define CLASS_SIZE 5
@@ -22,7 +23,9 @@ int last = -1; // Index of the last used record (-1 = empty)
 // === Function Declarations ===============================================
 int menu(void);
 void get_valid_grades(int *g1, int *g2, int *g3); // New Helper
+int strings_match_ignore_case(const char *s1, const char *s2); // lowers name
 int find_student_index(void);                     // New Locator
+int is_duplicate_name(char *new_name);             // checks if duplicate
 
 // Action functions now take no arguments (they call locator internally)
 int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
@@ -49,16 +52,23 @@ int main(void)
         case 1:  /* Add student */
             system("cls");
             
-            // check if full before asking for input
             if (last == CLASS_SIZE - 1) {
-                printf("Database is full, please delete existing data first.\n");
-                system("pause");
-                system("cls");
-                break;
+                printf("Database is full...\n");
+                // ... (break)
             }
 
             printf("Input student name: ");
             scanf(" %49[^\n]", name);
+
+            // --- NEW CODE STARTS HERE ---
+            
+            // Check for duplicates immediately
+            if (is_duplicate_name(name)) {
+                printf("Error: Student '%s' already exists in the database.\n", name);
+                system("pause");
+                system("cls");
+                break; // Stop! Do not ask for grades, do not add.
+            }
 
             // DELEGATED: Call the new function to get grades
             get_valid_grades(&g1, &g2, &g3);
@@ -153,6 +163,22 @@ void get_valid_grades(int *g1, int *g2, int *g3) {
 }
 
 /*
+ * Compare two strings ignoring case.
+ * Returns 1 if they match, 0 if they don't.
+ */
+int strings_match_ignore_case(const char *s1, const char *s2) {
+    while (*s1 && *s2) {
+        if (tolower((unsigned char)*s1) != tolower((unsigned char)*s2)) {
+            return 0; // Characters differ
+        }
+        s1++;
+        s2++;
+    }
+    // If we reached the end, check if BOTH strings ended at the same time
+    return *s1 == *s2; 
+}
+
+/*
  * find_student_index: The "Smart Locator"
  * 1. Asks user to search by ID or Name.
  * 2. Searches the array.
@@ -183,18 +209,32 @@ int find_student_index(void) {
         scanf(" %49[^\n]", search_name);
 
         for (int i = 0; i <= last; i++) {
-            // strcmp returns 0 if strings are identical
-            if (strcmp(student[i], search_name) == 0) {
+            // UPDATED LINE: Use the new helper function
+            if (strings_match_ignore_case(student[i], search_name)) {
                 return i; // Found it at index i
             }
         }
-    } 
+    }
     else {
         printf("Invalid search mode.\n");
         return -1;
     }
 
     return -1; // Not found
+}
+
+/*
+ * Checks if a name already exists in the database.
+ * Returns 1 if duplicate found, 0 if unique.
+ */
+int is_duplicate_name(char *new_name) {
+    for (int i = 0; i <= last; i++) {
+        // Use our case-insensitive helper from before
+        if (strings_match_ignore_case(student[i], new_name)) {
+            return 1; // Found a match!
+        }
+    }
+    return 0; // No match found
 }
 
 int menu(void)
