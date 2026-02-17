@@ -23,7 +23,8 @@ int last = -1; // -1 means empty
 // === Prototypes ==========================================================
 int menu(void);
 int find_index(void);
-void add_data(void);
+int name_duplicate(char *name);
+int add_data(void);
 void view_data(void);
 void edit_data(void);
 void locate_data(void);
@@ -88,31 +89,46 @@ int find_index(void) {
     return -1;
 }
 
+int name_duplicate(char *temp_name){
+    for (int i = 0; i <= last; i++) {
+        // Raw strcmp: Case-sensitive!
+        if (strcmp(student[i], temp_name) == 0) return 1;
+    }
+    return 0;
+}
 // === Core Functions ======================================================
 
 int menu(void) {
     int option;
     printf("=== BAREBONES DATABASE ===\n");
-    printf("[1] Add\n[2] View\n[3] Edit\n[4] Locate\n[5] Delete\n[6] Save\n[7] Load\n[8] Exit\nChoice: ");
+    printf("[1] Add\n[2] View\n[3] Edit\n[4] Locate\n[5] Delete\n[6] Save\n[7] Load\n[8] Exit\nlast = %d\nChoice: ", last);
     scanf("%d", &option);
     return option;
 }
 
-void add_data(void) {
+int add_data(void) {
     if (last == CLASS_SIZE - 1) {
         printf("Database full.\n");
-        return;
+        return 0;
     }
     
+    char temp_name[NAME_SIZE];
+    printf("Enter Name: ");
+    scanf(" %49[^\n]", temp_name);
+
+    if (name_duplicate(temp_name))
+    {
+        printf("Student already in Record!\n");
+        return 1;
+    }
+
     last++;
     id_array[last] = last + 1;
-
-    printf("Enter Name: ");
-    scanf(" %49[^\n]", student[last]);
+    strcpy(student[last],temp_name);
 
     printf("Enter 3 Grades (Math Sci Eng): ");
     // No validation loop. Assumes user inputs numbers correctly.
-    scanf("%d %d %d", &grades[last][0], &grades[last][1], &grades[last][2]);
+    scanf(" %d %d %d", &grades[last][0], &grades[last][1], &grades[last][2]);
 
     printf("Added.\n");
 }
