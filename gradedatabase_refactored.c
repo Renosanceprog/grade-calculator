@@ -395,7 +395,7 @@ int edit_data(void)
     get_valid_grades(&grades[target_index][0], &grades[target_index][1], &grades[target_index][2]);
     
     char log_msg[100];
-    sprintf(log_msg, "Modified student %s's grades", student[last]);
+    sprintf(log_msg, "Modified student %s's grades", student[target_index]);
     log_action(log_msg);
 
     printf("Record updated.\n");
@@ -458,7 +458,7 @@ int delete_data()
 	printf("Deleting %s (ID: %d)...\n", student[target_index], id_array[target_index]);
 
     char log_msg[100];
-    sprintf(log_msg, "Deleted student %s", student[last]);
+    sprintf(log_msg, "Deleted student %s", student[target_index]);
     log_action(log_msg);
 
     // 2. Shift Logic
