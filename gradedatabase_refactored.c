@@ -27,7 +27,7 @@ int strings_match_ignore_case(const char *s1, const char *s2); // makes sure tha
 int find_student_index(void);                     			   // New Locator, deprecated original locator function so action functions call this internally
 int is_duplicate_name(char *new_name);             		       // checks if name entered is duplicate
 void log_action(char *message);								   // makes logs to all actions made in the program
-void sort_by_name(void);                                       // sort the database by name using bubblesort
+void sort_by_average_then_name(void);                          // sort the database by averages first then by name whilst preserving the first sort using bubblesort
 
 // === Menu Functions =======================================================
 int menu(); //displays the Menu UI
@@ -210,32 +210,48 @@ void log_action(char *message) {
     }
 }
 
-void sort_by_name(void) {
-    // Bubble Sort Algorithm
+void sort_by_average_then_name(void) {
     for (int i = 0; i <= last - 1; i++) {
         for (int j = 0; j <= last - i - 1; j++) {
             
-            // If Student J comes AFTER Student J+1 alphabetically... SWAP THEM!
-            // (e.g., if student[j] is "Zebra" and student[j+1] is "Apple")
-            if (strcmp(student[j], student[j + 1]) > 0) {
-                
-                // 1. Swap the Names using a temporary string
+            // 1. Calculate the TOTAL SUM instead of floats for perfect accuracy
+            int sum_j = grades[j][0] + grades[j][1] + grades[j][2];
+            int sum_next = grades[j+1][0] + grades[j+1][1] + grades[j+1][2];
+
+            int needs_swap = 0; // A flag to tell us if we should swap
+
+            // RULE 1: Sort by Average (Highest to Lowest)
+            if (sum_next > sum_j) {
+                needs_swap = 1; 
+            }
+            // RULE 2: The Tie-Breaker (If averages are EXACTLY the same)
+            else if (sum_next == sum_j) {
+                // Use your custom alphabetical strcmp!
+                // If student[j] comes AFTER student[j+1] alphabetically, swap!
+                if (strcmp(student[j], student[j + 1]) > 0) {
+                    needs_swap = 1;
+                }
+            }
+
+            // --- THE SWAP EXECUTION ---
+            if (needs_swap == 1) {
+                // 1. Swap Names (using strcpy and a temp string)
                 char temp_name[NAME_SIZE];
                 strcpy(temp_name, student[j]);
                 strcpy(student[j], student[j + 1]);
                 strcpy(student[j + 1], temp_name);
 
-                // 2. Swap the Grades (Math, Sci, Eng) using a loop
+                // 2. Swap Grades (Loop through Math, Sci, Eng)
                 for (int k = 0; k < 3; k++) {
                     int temp_grade = grades[j][k];
                     grades[j][k] = grades[j + 1][k];
                     grades[j + 1][k] = temp_grade;
                 }
 
-                // 3. optional Swap the IDs (So the student keeps their original ID number)
-                //int temp_id = id_array[j];
-                //id_array[j] = id_array[j + 1];
-                //id_array[j + 1] = temp_id;
+                // 3. Swap IDs
+                // int temp_id = id_array[j];
+                // id_array[j] = id_array[j + 1];
+                // id_array[j + 1] = temp_id;
             }
         }
     }
@@ -340,7 +356,7 @@ int add_data(char name[NAME_SIZE], int g1, int g2, int g3){
     sprintf(log_msg, "Added student %s", student[last]);
     log_action(log_msg);
 
-    sort_by_name();
+    sort_by_average_then_name();
     printf("Student added successfully.\n");
     return 0;
 }
@@ -398,6 +414,7 @@ int edit_data(void)
     sprintf(log_msg, "Modified student %s's grades", student[target_index]);
     log_action(log_msg);
 
+    sort_by_average_then_name();
     printf("Record updated.\n");
     view_data();
 }
@@ -546,7 +563,7 @@ int load_database(void) {
 
     fclose(fp);
 
-    sort_by_name();
+    sort_by_average_then_name();
     printf("Database loaded! %d records found.\n", last + 1);
     return 1;
 }
