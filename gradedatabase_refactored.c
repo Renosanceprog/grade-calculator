@@ -1,582 +1,490 @@
 /*
- * GRADE DATABASE (Refactored)
+ * GRADE DATABASE (Linked List Refactor)
  *
- * - input_grades: Handles validation for grade entry (removes duplication).
- * - find_student_index: Asks user to search by ID or Name.
+ * - get_valid_grades: Handles validation for grade entry (prevents duplication).
+ * - find_student: Asks user to search by permanent ID (UID) or Name. Returns a 
+ * direct memory pointer to the node instead of an array index.
+ * - locatePrevNode: The "Wingman" traversal that finds the correct insertion 
+ * gap to keep the linked list sorted by grade average.
+ * - edit/delete_data: Safely bridges pointers around a target node to cleanly
+ * detach it from the chain without memory leaks.
+ * - save/load_database: Handles persistent CSV storage and executes safe 
+ * list demolition (freeing memory) before loading new data.
  */
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h> // for system()
-#include <ctype.h> // Required for tolower()
+#include <stdlib.h> 
+#include <ctype.h> 
 
 // === Configuration =======================================================
-#define CLASS_SIZE 10
+// Set the max number of name length
 #define NAME_SIZE 50
 
-// === Global storage ======================================================
-char student[CLASS_SIZE][NAME_SIZE];
-int grades[CLASS_SIZE][3];
-int id_array[CLASS_SIZE];
-int last = -1; // Index of the last used record (-1 = empty)
+// === Global storage (Structs) ============================================
+// Using a struct to keep all student info together (id, name, and 3 grades)
+// Makes it way easier to work with complete student records instead of separate arrays
+typedef struct Node{
+    int id;
+    char name[NAME_SIZE];
+    int grades[3];
+    struct Node *next_student;
+} StudentRecord;
 
-// === Function declarations (what each part does) ==========================
-int main(); // main hub for action, calls menu functions
-void get_valid_grades(int *g1, int *g2, int *g3);              // refactored version of grade validation to reduce code duplication for add and edit record
-int strings_match_ignore_case(const char *s1, const char *s2); // makes sure that it finds record by name regardless of string case (upper/lower)
-int find_student_index(void);                     			   // New Locator, deprecated original locator function so action functions call this internally
-int is_duplicate_name(char *new_name);             		       // checks if name entered is duplicate
-void log_action(char *message);								   // makes logs to all actions made in the program
-void sort_by_average_then_name(void);                          // sort the database by averages first then by name whilst preserving the first sort using bubblesort
+// linked list of student records - our "database"
+StudentRecord *head = NULL;
 
-// === Menu Functions =======================================================
-int menu(); //displays the Menu UI
+// Tracks the index of the last student added (starts at 0 for empty database)
+int studentCount = 0;
+
+// === Function declarations ===============================================
+int main(); 
+void get_valid_grades(int *g1, int *g2, int *g3);              
+int strings_match_ignore_case(const char *s1, const char *s2); 
+StudentRecord *find_student(void);                                  
+int is_duplicate_name(char *new_name);                         
+void log_action(char *message);                                
+StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3);
+
+int menu(); 
 int modify_menu();
 int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
-	int edit_data(void);
-	int delete_data(void);
+int edit_data(void);
+int delete_data(void);
 int view_data(void);
 int locate_data(void);
 int save_database(void);
 int load_database(void);
-
-// Utils
 int validinput(void);
 
 // === Main Loop ===========================================================
-int main(void)
-{
+// Main menu system - keeps running until user exits
+int main(void) {
     int isRunning = 1;
-    int g1, g2, g3;
-    char name[NAME_SIZE];
-
     while (isRunning) {
+        // Display menu and handle user choices
         switch (menu()) {
-
-        case 1:  
-            modify_menu();
-            system("cls");
-            break;
-
-        case 2:  /* View all records */
-            system("cls");
-            view_data();
-            system("pause");
-            system("cls");
-            break;
-
-        case 3: /* Locate */
-            system("cls");
-            locate_data(); // No arguments needed now
-            system("pause");
-            system("cls");
-            break;
-
-        case 4: /* Save */
-            system("cls");
-            save_database();
-            system("pause");
-            system("cls");
-            break;
-
-        case 5: /* Load */
-            system("cls");
-            load_database();
-            system("pause");
-            system("cls");
-            break;
-
-        case 6: /* Exit */
-            printf("Thank you for using the program.\n");
-            isRunning = 0;
-            break;
-
-        default:
-            printf("Invalid input, please try again\n");
-            system("pause");
-            system("cls");
-            break;
+        case 1:  modify_menu(); system("cls"); break;
+        case 2:  system("cls"); view_data(); system("pause"); system("cls"); break;
+        case 3:  system("cls"); locate_data(); system("pause"); system("cls"); break;
+        case 4:  system("cls"); save_database(); system("pause"); system("cls"); break;
+        case 5:  system("cls"); load_database(); system("pause"); system("cls"); break;
+        case 6:  printf("Thank you for using the program.\n"); isRunning = 0; break;
+        default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
         }
     }
-
     return 0;
 }
 
 // === Helper Functions ====================================================
 
-/*
- * get_valid_grades: Prompts user for 3 grades and validates range (0-100).
- * Uses pointers to return multiple values.
- */
+// Helper function to get grades from user
+// Keeps asking until we get valid input (0-100 for each grade)
+// Using pointers so we can return multiple values back to caller
 void get_valid_grades(int *g1, int *g2, int *g3) {
     int valid = 0;
     do {
         printf("Enter 3 grades (Math Sci Eng): ");
-        
+        // Check if we got exactly 3 numbers
         if (scanf("%d %d %d", g1, g2, g3) != 3) {
             printf("Invalid input. Please enter numbers only.\n");
-            int c; while ((c = getchar()) != '\n' && c != EOF); // Flush buffer
+            // Clear the input buffer if user entered garbage
+            int c; while ((c = getchar()) != '\n' && c != EOF); 
             continue;
         }
-
+        // Validate that all grades are in valid range
         if (*g1 >= 0 && *g1 <= 100 && *g2 >= 0 && *g2 <= 100 && *g3 >= 0 && *g3 <= 100) {
-            valid = 1;
+            valid = 1;  // Good input, exit loop
         } else {
             printf("Grades must be between 0 and 100.\n");
         }
     } while (!valid);
 }
 
-/*
- * Compare two strings ignoring case.
- * Returns 1 if they match, 0 if they don't.
- */
+// Compare two strings ignoring uppercase/lowercase differences
+// Returns 1 if they match, 0 if they don't
 int strings_match_ignore_case(const char *s1, const char *s2) {
     while (*s1 && *s2) {
-        if (tolower((unsigned char)*s1) != tolower((unsigned char)*s2)) {
-            return 0; // Characters differ
-        }
-        s1++;
-        s2++;
+        // Convert both characters to lowercase before comparing
+        if (tolower((unsigned char)*s1) != tolower((unsigned char)*s2)) return 0; 
+        s1++; s2++;
     }
-    // If we reached the end, check if BOTH strings ended at the same time
     return *s1 == *s2; 
 }
 
-/*
- * find_student_index: The "Smart Locator"
- * 1. Asks user to search by ID or Name.
- * 2. Searches the array.
- * 3. Returns the array INDEX of the found student, or -1 if not found.
- */
-int find_student_index(void) {
-    if (last == -1) return -1; // Empty DB
-
+// Search for a student by ID or Name
+// Returns the index where we found them, or -1 if not found
+StudentRecord *find_student(void) {
     int choice;
     printf("Locate by:\n[1] ID Number\n[2] Name\nSelect: ");
     choice = validinput();
-
+    StudentRecord *walker = head;
+    view_data();
+    // Search by ID number
     if (choice == 1) {
-        // --- Search by ID ---
         printf("Enter ID #: ");
         int search_id = validinput();
-        
-        for (int i = 0; i <= last; i++) {
-            if (id_array[i] == search_id) {
-                return i; // Found it at index i
-            }
+        // Loop through all students until we find the matching ID
+        while (walker != NULL) {
+            if (walker->id == search_id) return walker;
+
+            walker = walker->next_student;
         }
-    } 
+    }
+
+    // Search by name
     else if (choice == 2) {
-        // --- Search by Name ---
         char search_name[NAME_SIZE];
         printf("Enter Name: ");
         scanf(" %49[^\n]", search_name);
-
-        for (int i = 0; i <= last; i++) {
-            // UPDATED LINE: Use the new helper function
-            if (strings_match_ignore_case(student[i], search_name)) {
-                return i; // Found it at index i
-            }
+        // Loop through all students checking for name match (case doesn't matter)
+        while (walker != NULL) {
+            if (strings_match_ignore_case(walker->name, search_name)) return walker;
+            walker = walker->next_student;
         }
     }
-    else {
-        printf("Invalid search mode.\n");
-        return -1;
-    }
-
-    return -1; // Not found
+    return NULL; 
 }
 
-/*
- * Checks if a name already exists in the database.
- * Returns 1 if duplicate found, 0 if unique.
- */
+// Check if a student name already exists in the database
+// Returns 1 if duplicate found, 0 if name is new
 int is_duplicate_name(char *new_name) {
-    for (int i = 0; i <= last; i++) {
-        // Use our case-insensitive helper from before
-        if (strings_match_ignore_case(student[i], new_name)) {
-            return 1; // Found a match!
-        }
-    }
-    return 0; // No match found
+    StudentRecord *walker = head;
+    while (walker != NULL) {
+        if (strings_match_ignore_case(walker->name, new_name)) return 1;
+        walker = walker->next_student;
+    }    
+    return 0; 
 }
 
 void log_action(char *message) {
-    FILE *fp = fopen("audit_log.txt", "a"); // opens auditl log file
+    FILE *fp = fopen("audit_log.txt", "a"); 
     if (fp != NULL) {
-        fprintf(fp, "LOG: %s\n", message); // uses the message sent by the function as the string input
+        fprintf(fp, "LOG: %s\n", message); 
         fclose(fp);
     }
 }
 
-void sort_by_average_then_name(void) {
-    for (int i = 0; i <= last - 1; i++) {
-        for (int j = 0; j <= last - i - 1; j++) {
-            
-            // 1. Calculate the TOTAL SUM instead of floats for perfect accuracy
-            int sum_j = grades[j][0] + grades[j][1] + grades[j][2];
-            int sum_next = grades[j+1][0] + grades[j+1][1] + grades[j+1][2];
 
-            int needs_swap = 0; // A flag to tell us if we should swap
+StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3) {
+    int new_sum = g1 + g2 + g3;  
+    StudentRecord *walker = head;
+    StudentRecord *prev = NULL;
 
-            // RULE 1: Sort by Average (Highest to Lowest)
-            if (sum_next > sum_j) {
-                needs_swap = 1; 
-            }
-            // RULE 2: The Tie-Breaker (If averages are EXACTLY the same)
-            else if (sum_next == sum_j) {
-                // Use your custom alphabetical strcmp!
-                // If student[j] comes AFTER student[j+1] alphabetically, swap!
-                if (strcmp(student[j], student[j + 1]) > 0) {
-                    needs_swap = 1;
-                }
-            }
+    while (walker != NULL) {
+        int walker_sum = walker->grades[0] + walker->grades[1] + walker->grades[2];
+        
 
-            // --- THE SWAP EXECUTION ---
-            if (needs_swap == 1) {
-                // 1. Swap Names (using strcpy and a temp string)
-                char temp_name[NAME_SIZE];
-                strcpy(temp_name, student[j]);
-                strcpy(student[j], student[j + 1]);
-                strcpy(student[j + 1], temp_name);
+        if (walker_sum > new_sum) {
 
-                // 2. Swap Grades (Loop through Math, Sci, Eng)
-                for (int k = 0; k < 3; k++) {
-                    int temp_grade = grades[j][k];
-                    grades[j][k] = grades[j + 1][k];
-                    grades[j + 1][k] = temp_grade;
-                }
+        } 
+        else if (walker_sum == new_sum && stricmp(walker->name, name) < 0) {
 
-                // 3. Swap IDs
-                // int temp_id = id_array[j];
-                // id_array[j] = id_array[j + 1];
-                // id_array[j + 1] = temp_id;
-            }
+        } 
+        else {
+            break;
         }
+        
+
+        prev = walker;
+        walker = walker->next_student;
     }
+    
+    return prev;
 }
 
-// menu: show choices and read user selection, returns choice 1..4, or -1 on invalid input
-int menu(void)
-{
-    int option;
-
-    printf("=== STUDENT DATABASE ===\n");
+int menu(void) {
+    printf("=== STUDENT DATABASE (STRUCTS) ===\n");
     printf("[1] Modify Database\n[2] View Database\n[3] Locate Student\n[4] Save Database\n[5] Load Database\n[6] Exit\n\nSelect option: ");
-	
-    /* If scanf fails (user typed a letter), clear the input line and return -1 */
-	option = validinput();
-
-    return option;
+    return validinput();
 }
 
-int modify_menu(){
-	int option;
-	int g1, g2, g3, id_number;
+int modify_menu() {
+    int option, g1, g2, g3;
     char name[NAME_SIZE];
 
-	while (1){
+    while (1) {
         system("cls");
         printf("=== MODIFY DATABASE ===\n");
         printf("[1] Add Record\n[2] Edit Record\n[3] Remove Record\n[4] Return to main menu\n\nSelect option: ");
-        /* If scanf fails (user typed a letter), clear the input line and return -1 */
         option = validinput();
-        switch (option)
-        {
-        case 1: /* Add student */
-            system("cls");  // clear screen for neatness on Windows
-
+        switch (option) {
+        case 1: 
+            system("cls");  
             printf("Input student name: ");
-            // Read up to 49 chars and stop at newline to avoid overflow
             scanf(" %49[^\n]", name);
-
-            if (is_duplicate_name(name)) // if true, stop Do not ask for grades, do not add.
-            {
+            if (is_duplicate_name(name)) {
                 printf("Error: Student '%s' already exists in the database.\n", name);
-                system("pause");
-                system("cls");
-                break; 
+                system("pause"); system("cls"); break; 
             }
-            
-            // DELEGATED: Call the new function to get grades
             get_valid_grades(&g1, &g2, &g3);
-            
-            add_data(name, g1, g2, g3); // call the function that adds data to the database
-            system("pause");
-            system("cls");
-            break;
-        
-        case 2: /* edit record */
-            system("cls");
-            edit_data(); // No arguments needed now
-            system("pause");
-            system("cls");   
-            break;
-        
-        case 3: /* delete record */
-            system("cls");
-            delete_data(); // No arguments needed now
-            system("pause");
-            system("cls");
-            break;
-        
-        case 4:
-            return 0;
-            break;
-        
-        default:
-            printf("Invalid input, please try again\n");
-            system("pause");
-            system("cls");
-            break;
+            add_data(name, g1, g2, g3); 
+            system("pause"); system("cls"); break;
+        case 2: system("cls"); edit_data(); system("pause"); system("cls"); break;
+        case 3: system("cls"); delete_data(); system("pause"); system("cls"); break;
+        case 4: return 0;
+        default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
         }
-	}
-
-
+    }
     return option;
 }
 
-// add_data: insert a new student record at the end, takes name (string with spaces), then g1,g2,g3 (three integer grades values 0-100), returns 0 on success and prints error message and returns 0 for full database
-int add_data(char name[NAME_SIZE], int g1, int g2, int g3){
-	
-    if (last == CLASS_SIZE - 1) { //if the value of last equates to the class_size (accounting for last counting on 0) will report the user that the database is full
-        printf("Database is full, please delete existing data first.\n");
-        return 0;
+// === CORE CRUD (Create, read, update and delete) FUNCTIONS REFACTORED ======================================
+
+// Add a new student to the database, keeping it sorted by average
+int add_data(char name[NAME_SIZE], int g1, int g2, int g3) {
+    // Find the correct position to insert this student
+    StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
+    StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
+    studentCount++;  // Increment count since we're adding one more 
+
+    // Insert the new student's data at the correct position
+    new_student->id = studentCount;
+    strcpy(new_student->name, name);
+    new_student->grades[0] = g1;
+    new_student->grades[1] = g2;
+    new_student->grades[2] = g3;
+    
+    //link the new node
+    if (prev_student == NULL) {
+        // EDGE CASE: List is empty, OR this student has the highest grade in the class!
+        // They become the brand new head of the list.
+        new_student->next_student = head;
+        head = new_student;
+    } 
+    else {
+        // NORMAL CASE: Drop them right into the gap
+        new_student->next_student = prev_student->next_student; // New guy points to the guy after
+        prev_student->next_student = new_student;               // Guy before points to the new guy
     }
 
-    last++;                         // move to next free slot
-    id_array[last] = last + 1;      // simple user-friendly ID
-    strcpy(student[last], name);    // copy name into storage
-    grades[last][0] = g1;           // Math
-    grades[last][1] = g2;           // Sci
-    grades[last][2] = g3;           // Eng
-    
+    // Log this action to the audit file for record-keeping
     char log_msg[100];
-    sprintf(log_msg, "Added student %s", student[last]);
+    sprintf(log_msg, "Added student %s", new_student->name);
     log_action(log_msg);
-
-    sort_by_average_then_name();
+    
     printf("Student added successfully.\n");
     return 0;
 }
 
-// view_data: print all stored student records in a table - prints ID, Name, each grade, average, and remark (Passed/Failed)
-int view_data(void)
-{
-    if (last == -1) { // checks if database is empty
+// Display all students in a formatted table showing their grades and average
+int view_data(void) {
+    if (studentCount == 0) {  // Check if database has any records
         printf("Database is empty, please enter data first.\n");
         return -1;
     }
-
-    float average;
-
     printf("--- STUDENT RECORDS ---\n");
     printf("-----------------------------------------------------------------------\n");
     printf("ID | Name             | Math | Sci | Eng | Average | Remarks\n");
     printf("-----------------------------------------------------------------------\n");
 
-    for (size_t i = 0; i <= last; i++) {
-        average = (grades[i][0] + grades[i][1] + grades[i][2]) / 3.0f;
+    // Print each student's record with their average and pass/fail status
+    StudentRecord *walker = head;
+    while (walker != NULL) {
+        float avg = (walker->grades[0] + walker->grades[1] + walker->grades[2]) / 3.0f;
         printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-               id_array[i], student[i], grades[i][0], grades[i][1], grades[i][2],
-               average, (average >= 75.0f) ? "Passed" : "Failed"); // uses a ternary operator for remarks, checks if average is greater than or equal to 75 then prints remark
+               walker->id, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
+               avg, (avg >= 75.0f) ? "Passed" : "Failed");
+        walker = walker->next_student;
     }
     printf("-----------------------------------------------------------------------\n");
     return 0;
 }
 
-// edit_data: locates a record by its ID or name then prompts you to edit 3 grades
-
-// Behavior:
-// - If database is empty, a message is printed.
-// - If record is not found, a message is printed.
-int edit_data(void)
-{
-    if (last == -1) {
-        printf("Database is empty.\n");
-        return 0;
-    }
-
-    // 1. Find the index using the new locator
-    int target_index = find_student_index();
-
-    if (target_index ==-1){
-        printf("Student not found.\n");
-        return 0;
-    }
-	view_data();
-    printf("Editing record for: %s (ID: %d)\n", student[target_index], id_array[target_index]);
-
-    get_valid_grades(&grades[target_index][0], &grades[target_index][1], &grades[target_index][2]);
+// Edit a student's grades (removes from old position and re-sorts)
+int edit_data(void) {
+    if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
+    // Find which student to edit
+    StudentRecord *target_Student = find_student();
+    if (target_Student == NULL){ printf("Student not found.\n"); return 0; }
     
+    view_data();
+    printf("Editing record for: %s (ID: %d)\n", target_Student->name, target_Student->id);
+    
+    int new_g1, new_g2, new_g3;
+    get_valid_grades(&new_g1, &new_g2, &new_g3);
+    
+    // PHASE 1a: Remove the old record of the student
+    if (target_Student == head) head = target_Student->next_student;
+    else
+    {
+        StudentRecord *prev = head;
+        while (prev->next_student != target_Student)
+        {
+            prev = prev->next_student;
+        }
+        prev->next_student = target_Student->next_student;
+    }
+    
+    // Save the new data
+    target_Student->grades[0] = new_g1;
+    target_Student->grades[1] = new_g2;
+    target_Student->grades[2] = new_g3;
+
+    StudentRecord *new_Position = locatePrevNode(target_Student->name, new_g1, new_g2, new_g3);
+    // PHASE 1b: append the records on each side of the node to each other
+    if (new_Position == NULL) {
+        // EDGE CASE: List is empty, OR this student has the highest grade in the class!
+        // They become the brand new head of the list.
+        target_Student->next_student = head;
+        head = target_Student;
+    } 
+    else {
+        // NORMAL CASE: Drop them right into the gap
+        target_Student->next_student = new_Position->next_student; // New guy points to the guy after
+        new_Position->next_student = target_Student;               // Guy before points to the new guy
+    }
+
+    // Log the modification
     char log_msg[100];
-    sprintf(log_msg, "Modified student %s's grades", student[target_index]);
+    sprintf(log_msg, "Modified student %s's grades", target_Student->name);
     log_action(log_msg);
 
-    sort_by_average_then_name();
-    printf("Record updated.\n");
-    view_data();
+    printf("Record updated and re-sorted successfully.\n");
+    return 1;
 }
 
-// locate_data: locates a record by its ID or name
+// Find and display a single student's information
+int locate_data() {
+    if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
+    // Find the student
+    StudentRecord *node_Student = find_student();
+    if (node_Student == NULL){ printf("Student not found.\n"); return 0; }
 
-// Behavior:
-// - If database is empty, a message is printed.
-// - If record is not found, a message is printed.
-int locate_data()
-{
-    if (last == -1) {
-        printf("Database is empty.\n");
-        return 0;
-    }
-    int target_index = find_student_index();
-
-    if (target_index ==-1){
-        printf("Student not found.\n");
-        return 0;
-    }
-
-    // 2. Show single result
-	printf("Found %s at (ID: %d)\n", student[target_index], id_array[target_index]);
+    printf("Found %s at (ID: %d)\n", node_Student->name, node_Student->id);
     printf("-----------------------------------------------------------------------\n");
     printf("ID | Name             | Math | Sci | Eng | Average | Remarks\n");
     printf("-----------------------------------------------------------------------\n");
     
-    float avg = (grades[target_index][0] + grades[target_index][1] + grades[target_index][2]) / 3.0f;
+    // Calculate and display average
+    float avg = (node_Student->grades[0] + node_Student->grades[1] + node_Student->grades[2]) / 3.0f;
     printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-            id_array[target_index], student[target_index], grades[target_index][0], grades[target_index][1], grades[target_index][2],
+            node_Student->id, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
             avg, (avg >= 75.0f) ? "Passed" : "Failed");
     printf("-----------------------------------------------------------------------\n");
-
+    return 1;
 }
 
-// delete_data: remove a record by its ID and shift following records down
-
-// Behavior:
-// - If database is empty, a message is printed.
-// - If ID is not found, a message is printed and nothing changes.
-// - After deletion, IDs are reassigned to stay consecutive (1,2,...).
-int delete_data()
-{
-    if (last == -1) {
-        printf("Database is empty.\n");
-        return 0;
+// Remove a student from the database
+int delete_data() {
+    if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
+    // Find which student to edit
+    StudentRecord *target_Student = find_student();
+    if (target_Student == NULL){ printf("Student not found.\n"); return 0; }
+    
+    printf("Deleting %s (ID: %d)...\n", target_Student->name, target_Student->id);
+    
+    //Remove the old record of the student
+    if (target_Student == head) head = target_Student->next_student;
+    else
+    {
+        StudentRecord *prev = head;
+        while (prev->next_student != target_Student)
+        {
+            prev = prev->next_student;
+        }
+        prev->next_student = target_Student->next_student;
     }
 
-    view_data();
-    // 1. find index
-    int target_index = find_student_index();
-
-    if (target_index ==-1){
-        printf("Student not found.\n");
-        return 0;
-    }
-	printf("Deleting %s (ID: %d)...\n", student[target_index], id_array[target_index]);
-
+    // Log the deletion
     char log_msg[100];
-    sprintf(log_msg, "Deleted student %s", student[target_index]);
+    sprintf(log_msg, "Deleted student %s", target_Student->name);
     log_action(log_msg);
 
-    // 2. Shift Logic
-    for (int i = target_index; i < last; i++) {
-        id_array[i] = id_array[i + 1];
-        strcpy(student[i], student[i + 1]);
-        grades[i][0] = grades[i + 1][0];
-        grades[i][1] = grades[i + 1][1];
-        grades[i][2] = grades[i + 1][2];
-    }
-
-    last--;
-
-    // 3. Re-ID Logic
-    for (int i = 0; i <= last; i++) {
-        id_array[i] = i + 1;
-    }
+    free(target_Student);
 
     printf("Record deleted successfully.\n");
+    //studentCount--; to avoid duplicated id bug
+    // Show updated database
     view_data();
+    return 1;
 }
 
-//load_database: saves data from arrays into "database.txt" 
+// Save all student records to a file (comma-separated format)
 int save_database(void) {
-    if (last == -1) {
-        printf("Database is empty. Nothing to save.\n");
-        return 0;
-    }
+    if (studentCount == 0) { printf("Database is empty. Nothing to save.\n"); return 0; }
+    // Open file for writing (creates new or overwrites existing)
+    FILE *fp = fopen("database.txt", "w"); 
+    if (fp == NULL) { printf("Error: Could not create file.\n"); return 0; }
 
-    FILE *fp = fopen("database.txt", "w"); // "w" = Write (Overwrites existing file)
-    
-    if (fp == NULL) {
-        printf("Error: Could not create file.\n");
-        return 0;
+    // Write each student's data in CSV format
+    StudentRecord *walker = head;
+    while (walker != NULL)
+    {
+        fprintf(fp, "%d,%s,%d,%d,%d\n", walker->id, walker->name, walker->grades[0], walker->grades[1], walker->grades[2]);
+        walker = walker->next_student;
     }
-
-    // Write the count of students first (optional, but helpful)
-    // Then write each student: ID,Name,G1,G2,G3
-    for (int i = 0; i <= last; i++) {
-        // Since names have spaces, we will use a comma ',' as a delimiter.
-        fprintf(fp, "%d,%s,%d,%d,%d\n", id_array[i], student[i], grades[i][0], grades[i][1], grades[i][2]);
-    }
-
-    fclose(fp); // Always close the file taught by sir renegado
+    fclose(fp); 
     printf("Database saved successfully to 'database.txt'.\n");
     return 1;
 }
 
-
-//load_database: Reads data from "database.txt" into arrays
+// Load student records from the saved file
 int load_database(void) {
-    FILE *fp = fopen("database.txt", "r"); // "r" = Read
-    
-    if (fp == NULL) {
-        printf("No saved database found.\n");
-        return 0;
+    FILE *fp = fopen("database.txt", "r"); 
+    if (fp == NULL) { printf("No saved database found.\n"); return 0; }
+
+    // Reset database
+    StudentRecord *free_walker = head;
+    while (free_walker)
+    {
+        StudentRecord *next = free_walker->next_student;
+        free(free_walker);
+        free_walker = next;
     }
 
-    // Clear current database in memory
-    last = -1;
-
-    // Temporary variables to hold read data
+    head = NULL;
+    studentCount = 0;
     int id, g1, g2, g3;
     char name[NAME_SIZE];
 
     printf("Loading data...\n");
 
-    // Loop until the end of the file (EOF)
-    // The format string must match the fprintf format EXACTLY
-    // %[^,] reads everything until a comma (good for names with spaces)
+    // Read each line and insert students, re-sorting as we go
     while (fscanf(fp, "%d,%[^,],%d,%d,%d\n", &id, name, &g1, &g2, &g3) == 5) {
+        // Find the correct position to insert this student
+        StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
+        StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
+        studentCount++;  // Increment count since we're adding one more 
+
+        // Insert the new student's data at the correct position
+        strcpy(new_student->name, name);
+        new_student->grades[0] = g1;
+        new_student->grades[1] = g2;
+        new_student->grades[2] = g3;
         
-        if (last >= CLASS_SIZE - 1) {
-            printf("Warning: Database full. Stopped loading early.\n");
-            break;
+        //link the new node
+        if (prev_student == NULL) {
+            // EDGE CASE: List is empty, OR this student has the highest grade in the class!
+            // They become the brand new head of the list.
+            new_student->next_student = head;
+            head = new_student;
+        } 
+        else {
+            // NORMAL CASE: Drop them right into the gap
+            new_student->next_student = prev_student->next_student; // New guy points to the guy after
+            prev_student->next_student = new_student;               // Guy before points to the new guy
         }
-
-        last++;
-        id_array[last] = id;
-        strcpy(student[last], name);
-        grades[last][0] = g1;
-        grades[last][1] = g2;
-        grades[last][2] = g3;
     }
-
     fclose(fp);
 
-    sort_by_average_then_name();
-    printf("Database loaded! %d records found.\n", last + 1);
+    printf("Database loaded! %d records found and sorted.\n", studentCount);
     return 1;
 }
 
+// Helper function to safely get an integer from user
+// Keeps asking until we get valid integer input
 int validinput(void){
     int valid = 0, input;
     do {
+        // Try to read an integer
         if (scanf(" %d", &input) != 1) {
             printf("Invalid input. Enter value: ");
+            // Clear the input buffer if user entered non-numeric garbage
             int c; while ((c = getchar()) != '\n' && c != EOF);
             continue;
         }
-        valid = 1;
+        valid = 1;  // Got good input, exit loop
     } while (!valid);
     return input;
 }
