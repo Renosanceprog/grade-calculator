@@ -37,7 +37,7 @@ StudentRecord *head = NULL;
 
 // Tracks the index of the last student added (starts at 0 for empty database)
 int studentCount = 0;
-char idPrefix[PREFIX_SIZE] = "CS";
+char idPrefix[PREFIX_SIZE];
 
 // === Function declarations ===============================================
 int main();
@@ -48,6 +48,7 @@ StudentRecord *find_student(void);
 int is_duplicate_name(char *new_name);                         
 void log_action(char *message);                                
 StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3);
+int print_Student(StudentRecord *node_Student);
 char* generate_UID(void);
 
 int persistence_menu();
@@ -59,8 +60,7 @@ int modify_menu(void);
     int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
     int edit_data(void);
     int delete_data(void);
-int view_data(void);
-int locate_data(void);
+int view_database(void);
 
 // === Main Loop ===========================================================
 // Main menu system - keeps running until user exits
@@ -71,8 +71,8 @@ int main(void) {
         // Display menu and handle user choices
         switch (menu()) {
         case 1:  modify_menu(); system("cls"); break;
-        case 2:  system("cls"); view_data(); system("pause"); system("cls"); break;
-        case 3:  system("cls"); locate_data(); system("pause"); system("cls"); break;
+        case 2:  system("cls"); view_database(); system("pause"); system("cls"); break;
+        case 3:  system("cls"); print_Student(find_student()); system("pause"); system("cls"); break;
         case 4:  system("cls"); if (persistence_menu() == -1){ system("cls"); printf("Thank you for using the program.\n"); isRunning = 0;} break;
         default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
         }
@@ -137,13 +137,26 @@ int strings_match_ignore_case(const char *s1, const char *s2) {
 // Returns the index where we found them, or -1 if not found
 StudentRecord *find_student(void) {
     int choice;
-    printf("Locate by:\n[1] ID Number\n[2] Name\nSelect: ");
+    printf("Locate by:\n[1] Index\n[2] ID Number\n[3] Name\nSelect: ");
     choice = validinput();
     StudentRecord *walker = head;
-    view_data();
+    view_database();
     // Search by ID number
-    if (choice == 1) {
-        printf("Enter ID %S-###: ", idPrefix);
+    switch (choice)
+    {
+    case 1:
+        printf("Enter index: ");
+        int index, walkerIndex = 1;
+        index = validinput();
+        // Loop through all students until we find the matching ID
+        while (walker != NULL) {
+            if (index == walkerIndex) return walker;
+            walker = walker->next_student;
+            walkerIndex++;
+        }
+        break;
+    case 2:
+        printf("Enter ID (%s-###): ", idPrefix);
         char search_id[PREFIX_SIZE];
         scanf(" %9[^\n]", search_id);
         // Loop through all students until we find the matching ID
@@ -151,10 +164,8 @@ StudentRecord *find_student(void) {
             if (strings_match_ignore_case(walker->UID, search_id)) return walker;
             walker = walker->next_student;
         }
-    }
-
-    // Search by name
-    else if (choice == 2) {
+        break;
+    case 3:
         char search_name[NAME_SIZE];
         printf("Enter Name: ");
         scanf(" %49[^\n]", search_name);
@@ -163,6 +174,10 @@ StudentRecord *find_student(void) {
             if (strings_match_ignore_case(walker->name, search_name)) return walker;
             walker = walker->next_student;
         }
+        break;
+    default:
+        printf("Choose a valid option.\n");
+        break;
     }
     return NULL; 
 }
@@ -214,6 +229,25 @@ StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3) {
     return prev;
 }
 
+// Display a single student's information
+int print_Student(StudentRecord *node_Student) {
+    if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
+    // Find the student
+    if (node_Student == NULL){ printf("Student not found.\n"); return 0; }
+
+    printf("-----------------------------------------------------------------------\n");
+    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
+    printf("-----------------------------------------------------------------------\n");
+    
+    // Calculate and display average
+    float avg = (node_Student->grades[0] + node_Student->grades[1] + node_Student->grades[2]) / 3.0f;
+    printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
+            node_Student->UID, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
+            avg, (avg >= 75.0f) ? "Passed" : "Failed");
+    printf("-----------------------------------------------------------------------\n");
+    return 1;
+}
+
 char* generate_UID(void)
 {
     studentCount++;
@@ -230,7 +264,7 @@ int persistence_menu()
     printf("[1] New Database\n[2] Save Database\n[3] Load Database\n[4] Exit Program\n\nSelect option: ");
     int option = validinput();
     switch (option) {
-    case 1: system("cls"); new_database(); printf("Created New Database\n"); system("pause"); system("cls"); break;
+    case 1: system("cls"); printf("Enter Class Prefix (max of 9 characters):"); scanf("%s", idPrefix); new_database(); printf("Created New Database\n"); system("pause"); system("cls"); break;
     case 2: system("cls"); save_database(); system("pause"); system("cls"); break;
     case 3: system("cls"); load_database(); system("pause"); system("cls"); break;
     case 4: return -1;
@@ -250,7 +284,7 @@ int new_database(void)
         free_walker = next;
     }
     head = NULL;
-    studentCount = 998;
+    studentCount = 0;
     return 0;
 }
 
@@ -278,45 +312,65 @@ int load_database(void) {
     FILE *fp = fopen("database.txt", "r"); 
     if (fp == NULL) { printf("No saved database found.\n"); return 0; }
 
-    // resets the database
+    // Resets the database
     new_database();
 
     int g1, g2, g3;
-    char id[PREFIX_SIZE];
+    char temp_id[PREFIX_SIZE]; // Temporary scratchpad for the UID
     char name[NAME_SIZE];
 
     printf("Loading data...\n");
 
-    // Read each line and insert students, re-sorting as we go
-    while (fscanf(fp, "%s,%[^,],%d,%d,%d\n", id, name, &g1, &g2, &g3) == 5) {
-        // Find the correct position to insert this student
+    // FIX 1: Use %[^,] for the ID so it stops exactly at the comma
+    while (fscanf(fp, "%[^,],%[^,],%d,%d,%d\n", temp_id, name, &g1, &g2, &g3) == 5) {
+        
+        // --- APP STATE RESTORATION ---
+        // Find the hyphen in the loaded ID (e.g., "CS-005")
+        char *hyphen_ptr = strchr(temp_id, '-');
+        if (hyphen_ptr != NULL) {
+            // 1. Extract the Prefix (Copy everything before the hyphen)
+            int prefix_length = hyphen_ptr - temp_id; 
+            strncpy(idPrefix, temp_id, prefix_length);
+            idPrefix[prefix_length] = '\0'; // Manually close the string
+            
+            // 2. Extract the Number (Convert everything after the hyphen to an int)
+            // hyphen_ptr + 1 skips the '-' and points directly at "005"
+            int loaded_number = atoi(hyphen_ptr + 1);
+            
+            // Only update studentCount if this number is the highest we've seen
+            if (loaded_number > studentCount) {
+                studentCount = loaded_number;
+            }
+        }
+        // -----------------------------
+
         StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
         StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
-        studentCount++;  // Increment count since we're adding one more 
 
-        // Insert the new student's data at the correct position
+        // FIX 2: Malloc the space for the dynamic string BEFORE copying
+        new_student->UID = (char *)malloc(strlen(temp_id) + 1);
+        strcpy(new_student->UID, temp_id);
+
+        // Pack the rest of the backpack
         strcpy(new_student->name, name);
         new_student->grades[0] = g1;
         new_student->grades[1] = g2;
         new_student->grades[2] = g3;
-        strcpy(new_student->UID, id);
 
-        //link the new node
+        // Link the new node
         if (prev_student == NULL) {
-            // EDGE CASE: List is empty, OR this student has the highest grade in the class!
-            // They become the brand new head of the list.
             new_student->next_student = head;
             head = new_student;
         } 
         else {
-            // NORMAL CASE: Drop them right into the gap
-            new_student->next_student = prev_student->next_student; // New guy points to the guy after
-            prev_student->next_student = new_student;               // Guy before points to the new guy
+            new_student->next_student = prev_student->next_student;
+            prev_student->next_student = new_student;
         }
     }
     fclose(fp);
 
-    printf("Database loaded! %d records found and sorted.\n", studentCount);
+    // Provide a cool debug print to prove it synced correctly!
+    printf("Database loaded! Next new student will be #%d using prefix '%s'.\n", studentCount + 1, idPrefix);
     return 1;
 }
 
@@ -391,29 +445,31 @@ int add_data(char name[NAME_SIZE], int g1, int g2, int g3) {
     sprintf(log_msg, "Added student %s", new_student->name);
     log_action(log_msg);
     
-    printf("Student added successfully.\n");
+    print_Student(new_student);
     return 0;
 }
 
 // Display all students in a formatted table showing their grades and average
-int view_data(void) {
+int view_database(void) {
     if (studentCount == 0) {  // Check if database has any records
         printf("Database is empty, please enter data first.\n");
         return -1;
     }
     printf("--- STUDENT RECORDS ---\n");
     printf("-----------------------------------------------------------------------\n");
-    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
+    printf("Index | ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
     printf("-----------------------------------------------------------------------\n");
 
     // Print each student's record with their average and pass/fail status
     StudentRecord *walker = head;
+    int index = 1;
     while (walker != NULL) {
         float avg = (walker->grades[0] + walker->grades[1] + walker->grades[2]) / 3.0f;
-        printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-               walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
+        printf("%5d | %7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
+               index, walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
                avg, (avg >= 75.0f) ? "Passed" : "Failed");
         walker = walker->next_student;
+        index++;
     }
     printf("-----------------------------------------------------------------------\n");
     return 0;
@@ -426,7 +482,6 @@ int edit_data(void) {
     StudentRecord *target_Student = find_student();
     if (target_Student == NULL){ printf("Student not found.\n"); return 0; }
     
-    view_data();
     printf("Editing record for: %s (ID: %s)\n", target_Student->name, target_Student->UID);
     
     int new_g1, new_g2, new_g3;
@@ -468,28 +523,7 @@ int edit_data(void) {
     sprintf(log_msg, "Modified student %s's grades", target_Student->name);
     log_action(log_msg);
 
-    printf("Record updated and re-sorted successfully.\n");
-    return 1;
-}
-
-// Find and display a single student's information
-int locate_data() {
-    if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
-    // Find the student
-    StudentRecord *node_Student = find_student();
-    if (node_Student == NULL){ printf("Student not found.\n"); return 0; }
-
-    printf("Found %s at (ID: %s)\n", node_Student->name, node_Student->UID);
-    printf("-----------------------------------------------------------------------\n");
-    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
-    printf("-----------------------------------------------------------------------\n");
-    
-    // Calculate and display average
-    float avg = (node_Student->grades[0] + node_Student->grades[1] + node_Student->grades[2]) / 3.0f;
-    printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-            node_Student->UID, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
-            avg, (avg >= 75.0f) ? "Passed" : "Failed");
-    printf("-----------------------------------------------------------------------\n");
+    print_Student(target_Student);
     return 1;
 }
 
@@ -522,8 +556,6 @@ int delete_data() {
     free(target_Student);
 
     printf("Record deleted successfully.\n");
-    //studentCount--; to avoid duplicated id bug
-    // Show updated database
-    view_data();
+    view_database();
     return 1;
 }
