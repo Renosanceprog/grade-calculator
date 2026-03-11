@@ -18,14 +18,15 @@
 #include <ctype.h> 
 
 // === Configuration =======================================================
-// Set the max number of name length
+// Set the max number of name and prefix length
 #define NAME_SIZE 50
+#define PREFIX_SIZE 10
 
 // === Global storage (Structs) ============================================
 // Using a struct to keep all student info together (id, name, and 3 grades)
 // Makes it way easier to work with complete student records instead of separate arrays
 typedef struct Node{
-    int id;
+    char *UID;
     char name[NAME_SIZE];
     int grades[3];
     struct Node *next_student;
@@ -36,40 +37,43 @@ StudentRecord *head = NULL;
 
 // Tracks the index of the last student added (starts at 0 for empty database)
 int studentCount = 0;
+char idPrefix[PREFIX_SIZE] = "CS";
 
 // === Function declarations ===============================================
-int main(); 
+int main();
+int validinput(void);
 void get_valid_grades(int *g1, int *g2, int *g3);              
 int strings_match_ignore_case(const char *s1, const char *s2); 
 StudentRecord *find_student(void);                                  
 int is_duplicate_name(char *new_name);                         
 void log_action(char *message);                                
 StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3);
+char* generate_UID(void);
 
-int menu(); 
-int modify_menu();
-int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
-int edit_data(void);
-int delete_data(void);
+int persistence_menu();
+    int new_database(void);
+    int save_database(void);
+    int load_database(void);
+int menu(void);
+int modify_menu(void);
+    int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
+    int edit_data(void);
+    int delete_data(void);
 int view_data(void);
 int locate_data(void);
-int save_database(void);
-int load_database(void);
-int validinput(void);
 
 // === Main Loop ===========================================================
 // Main menu system - keeps running until user exits
 int main(void) {
     int isRunning = 1;
+    if (persistence_menu() == -1){ printf("Thank you for using the program.\n"); return 0;}
     while (isRunning) {
         // Display menu and handle user choices
         switch (menu()) {
         case 1:  modify_menu(); system("cls"); break;
         case 2:  system("cls"); view_data(); system("pause"); system("cls"); break;
         case 3:  system("cls"); locate_data(); system("pause"); system("cls"); break;
-        case 4:  system("cls"); save_database(); system("pause"); system("cls"); break;
-        case 5:  system("cls"); load_database(); system("pause"); system("cls"); break;
-        case 6:  printf("Thank you for using the program.\n"); isRunning = 0; break;
+        case 4:  system("cls"); if (persistence_menu() == -1){ system("cls"); printf("Thank you for using the program.\n"); isRunning = 0;} break;
         default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
         }
     }
@@ -77,6 +81,23 @@ int main(void) {
 }
 
 // === Helper Functions ====================================================
+
+// Helper function to safely get an integer from user
+// Keeps asking until we get valid integer input
+int validinput(void){
+    int valid = 0, input;
+    do {
+        // Try to read an integer
+        if (scanf(" %d", &input) != 1) {
+            printf("Invalid input. Enter value: ");
+            // Clear the input buffer if user entered non-numeric garbage
+            int c; while ((c = getchar()) != '\n' && c != EOF);
+            continue;
+        }
+        valid = 1;  // Got good input, exit loop
+    } while (!valid);
+    return input;
+}
 
 // Helper function to get grades from user
 // Keeps asking until we get valid input (0-100 for each grade)
@@ -122,12 +143,12 @@ StudentRecord *find_student(void) {
     view_data();
     // Search by ID number
     if (choice == 1) {
-        printf("Enter ID #: ");
-        int search_id = validinput();
+        printf("Enter ID %S-###: ", idPrefix);
+        char search_id[PREFIX_SIZE];
+        scanf(" %9[^\n]", search_id);
         // Loop through all students until we find the matching ID
         while (walker != NULL) {
-            if (walker->id == search_id) return walker;
-
+            if (strings_match_ignore_case(walker->UID, search_id)) return walker;
             walker = walker->next_student;
         }
     }
@@ -193,9 +214,117 @@ StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3) {
     return prev;
 }
 
+char* generate_UID(void)
+{
+    studentCount++;
+    int len = snprintf(NULL, 0, "%s-%03d",idPrefix, studentCount);
+    char *new_id = (char *)malloc(len + 1);
+    sprintf(new_id, "%s-%03d",idPrefix, studentCount);
+    return new_id;
+}
+
+// === PERSISTENCE FUNCTIONS (NEW, SAVE AND LOAD) ======================================
+int persistence_menu()
+{
+    printf("=== STUDENT DATABASE (START) ===\n");
+    printf("[1] New Database\n[2] Save Database\n[3] Load Database\n[4] Exit Program\n\nSelect option: ");
+    int option = validinput();
+    switch (option) {
+    case 1: system("cls"); new_database(); printf("Created New Database\n"); system("pause"); system("cls"); break;
+    case 2: system("cls"); save_database(); system("pause"); system("cls"); break;
+    case 3: system("cls"); load_database(); system("pause"); system("cls"); break;
+    case 4: return -1;
+    default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
+    }
+    return 0;
+}
+
+// Resets database
+int new_database(void)
+{
+    StudentRecord *free_walker = head;
+    while (free_walker)
+    {
+        StudentRecord *next = free_walker->next_student;
+        free(free_walker);
+        free_walker = next;
+    }
+    head = NULL;
+    studentCount = 998;
+    return 0;
+}
+
+// Save all student records to a file (comma-separated format)
+int save_database(void) {
+    if (studentCount == 0) { printf("Database is empty. Nothing to save.\n"); return 0; }
+    // Open file for writing (creates new or overwrites existing)
+    FILE *fp = fopen("database.txt", "w"); 
+    if (fp == NULL) { printf("Error: Could not create file.\n"); return 0; }
+
+    // Write each student's data in CSV format
+    StudentRecord *walker = head;
+    while (walker != NULL)
+    {
+        fprintf(fp, "%s,%s,%d,%d,%d\n", walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2]);
+        walker = walker->next_student;
+    }
+    fclose(fp); 
+    printf("Database saved successfully to 'database.txt'.\n");
+    return 1;
+}
+
+// Load student records from the saved file
+int load_database(void) {
+    FILE *fp = fopen("database.txt", "r"); 
+    if (fp == NULL) { printf("No saved database found.\n"); return 0; }
+
+    // resets the database
+    new_database();
+
+    int g1, g2, g3;
+    char id[PREFIX_SIZE];
+    char name[NAME_SIZE];
+
+    printf("Loading data...\n");
+
+    // Read each line and insert students, re-sorting as we go
+    while (fscanf(fp, "%s,%[^,],%d,%d,%d\n", id, name, &g1, &g2, &g3) == 5) {
+        // Find the correct position to insert this student
+        StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
+        StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
+        studentCount++;  // Increment count since we're adding one more 
+
+        // Insert the new student's data at the correct position
+        strcpy(new_student->name, name);
+        new_student->grades[0] = g1;
+        new_student->grades[1] = g2;
+        new_student->grades[2] = g3;
+        strcpy(new_student->UID, id);
+
+        //link the new node
+        if (prev_student == NULL) {
+            // EDGE CASE: List is empty, OR this student has the highest grade in the class!
+            // They become the brand new head of the list.
+            new_student->next_student = head;
+            head = new_student;
+        } 
+        else {
+            // NORMAL CASE: Drop them right into the gap
+            new_student->next_student = prev_student->next_student; // New guy points to the guy after
+            prev_student->next_student = new_student;               // Guy before points to the new guy
+        }
+    }
+    fclose(fp);
+
+    printf("Database loaded! %d records found and sorted.\n", studentCount);
+    return 1;
+}
+
+
+// === MAIN PROGRAM MENU FUNCTIONS ======================================
 int menu(void) {
-    printf("=== STUDENT DATABASE (STRUCTS) ===\n");
-    printf("[1] Modify Database\n[2] View Database\n[3] Locate Student\n[4] Save Database\n[5] Load Database\n[6] Exit\n\nSelect option: ");
+    printf("=== STUDENT DATABASE (Linked Lists) ===\n");
+    printf("[1] Modify Database\n[2] View Database\n[3] Locate Student\n[4] Database Options\nSelect option: ");
     return validinput();
 }
 
@@ -236,10 +365,9 @@ int add_data(char name[NAME_SIZE], int g1, int g2, int g3) {
     // Find the correct position to insert this student
     StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
     StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
-    studentCount++;  // Increment count since we're adding one more 
 
     // Insert the new student's data at the correct position
-    new_student->id = studentCount;
+    new_student->UID = generate_UID();
     strcpy(new_student->name, name);
     new_student->grades[0] = g1;
     new_student->grades[1] = g2;
@@ -275,15 +403,15 @@ int view_data(void) {
     }
     printf("--- STUDENT RECORDS ---\n");
     printf("-----------------------------------------------------------------------\n");
-    printf("ID | Name             | Math | Sci | Eng | Average | Remarks\n");
+    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
     printf("-----------------------------------------------------------------------\n");
 
     // Print each student's record with their average and pass/fail status
     StudentRecord *walker = head;
     while (walker != NULL) {
         float avg = (walker->grades[0] + walker->grades[1] + walker->grades[2]) / 3.0f;
-        printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-               walker->id, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
+        printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
+               walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
                avg, (avg >= 75.0f) ? "Passed" : "Failed");
         walker = walker->next_student;
     }
@@ -299,7 +427,7 @@ int edit_data(void) {
     if (target_Student == NULL){ printf("Student not found.\n"); return 0; }
     
     view_data();
-    printf("Editing record for: %s (ID: %d)\n", target_Student->name, target_Student->id);
+    printf("Editing record for: %s (ID: %s)\n", target_Student->name, target_Student->UID);
     
     int new_g1, new_g2, new_g3;
     get_valid_grades(&new_g1, &new_g2, &new_g3);
@@ -351,15 +479,15 @@ int locate_data() {
     StudentRecord *node_Student = find_student();
     if (node_Student == NULL){ printf("Student not found.\n"); return 0; }
 
-    printf("Found %s at (ID: %d)\n", node_Student->name, node_Student->id);
+    printf("Found %s at (ID: %s)\n", node_Student->name, node_Student->UID);
     printf("-----------------------------------------------------------------------\n");
-    printf("ID | Name             | Math | Sci | Eng | Average | Remarks\n");
+    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
     printf("-----------------------------------------------------------------------\n");
     
     // Calculate and display average
     float avg = (node_Student->grades[0] + node_Student->grades[1] + node_Student->grades[2]) / 3.0f;
-    printf("%2d | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-            node_Student->id, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
+    printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
+            node_Student->UID, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
             avg, (avg >= 75.0f) ? "Passed" : "Failed");
     printf("-----------------------------------------------------------------------\n");
     return 1;
@@ -372,7 +500,7 @@ int delete_data() {
     StudentRecord *target_Student = find_student();
     if (target_Student == NULL){ printf("Student not found.\n"); return 0; }
     
-    printf("Deleting %s (ID: %d)...\n", target_Student->name, target_Student->id);
+    printf("Deleting %s (ID: %d)...\n", target_Student->name, target_Student->UID);
     
     //Remove the old record of the student
     if (target_Student == head) head = target_Student->next_student;
@@ -398,93 +526,4 @@ int delete_data() {
     // Show updated database
     view_data();
     return 1;
-}
-
-// Save all student records to a file (comma-separated format)
-int save_database(void) {
-    if (studentCount == 0) { printf("Database is empty. Nothing to save.\n"); return 0; }
-    // Open file for writing (creates new or overwrites existing)
-    FILE *fp = fopen("database.txt", "w"); 
-    if (fp == NULL) { printf("Error: Could not create file.\n"); return 0; }
-
-    // Write each student's data in CSV format
-    StudentRecord *walker = head;
-    while (walker != NULL)
-    {
-        fprintf(fp, "%d,%s,%d,%d,%d\n", walker->id, walker->name, walker->grades[0], walker->grades[1], walker->grades[2]);
-        walker = walker->next_student;
-    }
-    fclose(fp); 
-    printf("Database saved successfully to 'database.txt'.\n");
-    return 1;
-}
-
-// Load student records from the saved file
-int load_database(void) {
-    FILE *fp = fopen("database.txt", "r"); 
-    if (fp == NULL) { printf("No saved database found.\n"); return 0; }
-
-    // Reset database
-    StudentRecord *free_walker = head;
-    while (free_walker)
-    {
-        StudentRecord *next = free_walker->next_student;
-        free(free_walker);
-        free_walker = next;
-    }
-
-    head = NULL;
-    studentCount = 0;
-    int id, g1, g2, g3;
-    char name[NAME_SIZE];
-
-    printf("Loading data...\n");
-
-    // Read each line and insert students, re-sorting as we go
-    while (fscanf(fp, "%d,%[^,],%d,%d,%d\n", &id, name, &g1, &g2, &g3) == 5) {
-        // Find the correct position to insert this student
-        StudentRecord *prev_student = locatePrevNode(name, g1, g2, g3);
-        StudentRecord *new_student = (StudentRecord *)malloc(sizeof(StudentRecord));
-        studentCount++;  // Increment count since we're adding one more 
-
-        // Insert the new student's data at the correct position
-        strcpy(new_student->name, name);
-        new_student->grades[0] = g1;
-        new_student->grades[1] = g2;
-        new_student->grades[2] = g3;
-        
-        //link the new node
-        if (prev_student == NULL) {
-            // EDGE CASE: List is empty, OR this student has the highest grade in the class!
-            // They become the brand new head of the list.
-            new_student->next_student = head;
-            head = new_student;
-        } 
-        else {
-            // NORMAL CASE: Drop them right into the gap
-            new_student->next_student = prev_student->next_student; // New guy points to the guy after
-            prev_student->next_student = new_student;               // Guy before points to the new guy
-        }
-    }
-    fclose(fp);
-
-    printf("Database loaded! %d records found and sorted.\n", studentCount);
-    return 1;
-}
-
-// Helper function to safely get an integer from user
-// Keeps asking until we get valid integer input
-int validinput(void){
-    int valid = 0, input;
-    do {
-        // Try to read an integer
-        if (scanf(" %d", &input) != 1) {
-            printf("Invalid input. Enter value: ");
-            // Clear the input buffer if user entered non-numeric garbage
-            int c; while ((c = getchar()) != '\n' && c != EOF);
-            continue;
-        }
-        valid = 1;  // Got good input, exit loop
-    } while (!valid);
-    return input;
 }
