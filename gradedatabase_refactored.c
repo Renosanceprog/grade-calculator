@@ -15,12 +15,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h> 
-#include <ctype.h> 
+#include <ctype.h>
+#include <dirent.h>
 
 // === Configuration =======================================================
 // Set the max number of name and prefix length
 #define NAME_SIZE 50
 #define PREFIX_SIZE 10
+#define MAX_DATABASE 100
 
 // === Global storage (Structs) ============================================
 // Using a struct to keep all student info together (id, name, and 3 grades)
@@ -38,6 +40,7 @@ StudentRecord *head = NULL;
 // Tracks the index of the last student added (starts at 0 for empty database)
 int studentCount = 0;
 char idPrefix[PREFIX_SIZE];
+char current_save_path[NAME_SIZE] = "";
 
 // === Function declarations ===============================================
 int main();
@@ -49,12 +52,14 @@ int is_duplicate_name(char *new_name);
 void log_action(char *message);                                
 StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3);
 int print_Student(StudentRecord *node_Student);
-char* generate_UID(void);
+void print_separator(int total_width);
+char *generate_UID(void);
+void choose_Database(char *directory);
 
 int persistence_menu();
     int new_database(void);
     int save_database(void);
-    int load_database(void);
+    int load_database(char *directory);
 int menu(void);
 int modify_menu(void);
     int add_data(char name[NAME_SIZE], int g1, int g2, int g3);
@@ -232,29 +237,97 @@ StudentRecord *locatePrevNode(char name[], int g1, int g2, int g3) {
 // Display a single student's information
 int print_Student(StudentRecord *node_Student) {
     if (studentCount == 0) { printf("Database is empty.\n"); return 0; }
-    // Find the student
-    if (node_Student == NULL){ printf("Student not found.\n"); return 0; }
+    if (node_Student == NULL) { printf("Student not found.\n"); return 0; }
 
-    printf("-----------------------------------------------------------------------\n");
-    printf("ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
-    printf("-----------------------------------------------------------------------\n");
+    // Measure just this specific student against the headers
+    int id_len = strlen(node_Student->UID) > 2 ? strlen(node_Student->UID) : 2;
+    int name_len = strlen(node_Student->name) > 4 ? strlen(node_Student->name) : 4;
     
-    // Calculate and display average
+    // The fixed columns (without the Index) take 41 characters.
+    int total_width = 41 + id_len + name_len;
+
+    print_separator(total_width);
+    printf("%-*s | %-*s | %-4s | %-3s | %-3s | %-7s | %s\n",id_len, "ID", name_len, "Name", "Math", "Sci", "Eng", "Average", "Remarks");
+    print_separator(total_width);
+    
     float avg = (node_Student->grades[0] + node_Student->grades[1] + node_Student->grades[2]) / 3.0f;
-    printf("%7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-            node_Student->UID, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],
-            avg, (avg >= 75.0f) ? "Passed" : "Failed");
-    printf("-----------------------------------------------------------------------\n");
+    
+    printf("%-*s | %-*s | %-4d | %-3d | %-3d | %-7.2f | %s\n",id_len, node_Student->UID, name_len, node_Student->name, node_Student->grades[0], node_Student->grades[1], node_Student->grades[2],avg, (avg >= 75.0f) ? "Passed" : "Failed");
+    print_separator(total_width);
     return 1;
 }
 
-char* generate_UID(void)
+void print_separator(int total_width)
+{
+    for (int i = 0; i < total_width; i++) {
+        putchar('-');
+    }
+    putchar('\n');
+}
+
+char *generate_UID(void)
 {
     studentCount++;
     int len = snprintf(NULL, 0, "%s-%03d",idPrefix, studentCount);
     char *new_id = (char *)malloc(len + 1);
     sprintf(new_id, "%s-%03d",idPrefix, studentCount);
     return new_id;
+}
+
+void choose_Database(char *directory)
+{
+    struct dirent *entry;
+    // Define the folder path once so we can reuse it easily
+    const char *folderPath = "./save files/"; 
+    
+    DIR *dp = opendir(folderPath); 
+    char *fileList[MAX_DATABASE];
+    int fileCount = 0;
+
+    if (dp == NULL) {
+        perror("Unable to open directory");
+        return;
+    }
+
+    printf("--- Available Save Files (.txt) ---\n");
+
+    // 1. Filter and list .txt files
+    while ((entry = readdir(dp)) != NULL && fileCount < MAX_DATABASE) {
+        if (strstr(entry->d_name, ".txt")) {
+            fileList[fileCount] = strdup(entry->d_name);
+            printf("[%d] %s\n", fileCount + 1, fileList[fileCount]);
+            fileCount++;
+        }
+    }
+    closedir(dp);
+    if (fileCount == 0) {
+    printf("No .txt files found in this directory.\n");
+        return;
+    }
+
+    // 2. User Prompt
+    int choice;
+    while (1)
+    {
+        printf("\nChoose a file to load (1-%d): ", fileCount);
+        choice = validinput();
+        if (choice < 1 || choice > fileCount) {
+            printf("Invalid selection.\n");
+            continue;
+        }
+        break;
+    }
+    
+    // 3. Construct the Full Path
+    char *selectedFile = fileList[choice - 1];
+    snprintf(directory, NAME_SIZE, "%s%s", folderPath, selectedFile);
+    
+    // 4. Clean up the strdup memory before leaving!
+    for (int i = 0; i < fileCount; i++) {
+        free(fileList[i]);
+    }
+
+    return;
 }
 
 // === PERSISTENCE FUNCTIONS (NEW, SAVE AND LOAD) ======================================
@@ -266,7 +339,13 @@ int persistence_menu()
     switch (option) {
     case 1: system("cls"); printf("Enter Class Prefix (max of 9 characters):"); scanf("%s", idPrefix); new_database(); printf("Created New Database\n"); system("pause"); system("cls"); break;
     case 2: system("cls"); save_database(); system("pause"); system("cls"); break;
-    case 3: system("cls"); load_database(); system("pause"); system("cls"); break;
+    case 3: system("cls");
+        char fullPath[NAME_SIZE] = {0};
+        choose_Database(fullPath);
+        load_database(fullPath); 
+        system("pause"); 
+        system("cls"); 
+        break;
     case 4: return -1;
     default: printf("Invalid input.\n"); system("pause"); system("cls"); break;
     }
@@ -285,31 +364,59 @@ int new_database(void)
     }
     head = NULL;
     studentCount = 0;
+    // Wipe the active file path (makes the string empty)
+    current_save_path[0] = '\0';
     return 0;
 }
 
 // Save all student records to a file (comma-separated format)
 int save_database(void) {
-    if (studentCount == 0) { printf("Database is empty. Nothing to save.\n"); return 0; }
-    // Open file for writing (creates new or overwrites existing)
-    FILE *fp = fopen("database.txt", "w"); 
-    if (fp == NULL) { printf("Error: Could not create file.\n"); return 0; }
+    if (head == NULL) {
+        printf("Database is empty. Nothing to save.\n");
+        return 1;
+    }
 
-    // Write each student's data in CSV format
+    // 1. The "Save As..." Trigger
+    // If the path string is completely empty, it means this is a brand new database
+    if (current_save_path[0] == '\0') {
+        char temp_filename[50];
+        
+        printf("Enter a name for your new save file (without .txt): ");
+        scanf(" %49[^\n]", temp_filename); // Reads a line with spaces safely
+        
+        // Construct the full path and lock it into the global tracker
+        snprintf(current_save_path, NAME_SIZE, "./save files/%s.txt", temp_filename);
+    }
+
+    // 2. The Auto-Save Trigger
+    // Whether it was just created above, or loaded an hour ago, open the target file
+    FILE *fp = fopen(current_save_path, "w");
+    if (fp == NULL) {
+        printf("Error: Could not save to %s\n", current_save_path);
+        return 1;
+    }
+
+    printf("Saving to %s...\n", current_save_path);
+
+    // 3. Serialize the RAM into the Text File
     StudentRecord *walker = head;
-    while (walker != NULL)
-    {
+    int saved_count = 0;
+
+    while (walker != NULL) {
+        // IMPORTANT: We use the exact same format that fscanf expects to read!
         fprintf(fp, "%s,%s,%d,%d,%d\n", walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2]);
         walker = walker->next_student;
+        saved_count++;
     }
-    fclose(fp); 
-    printf("Database saved successfully to 'database.txt'.\n");
-    return 1;
+
+    fclose(fp);
+    printf("Successfully saved %d records!\n", saved_count);
+    return 0;
 }
 
 // Load student records from the saved file
-int load_database(void) {
-    FILE *fp = fopen("database.txt", "r"); 
+int load_database(char *directory) {
+    FILE *fp = fopen(directory, "r"); 
     if (fp == NULL) { printf("No saved database found.\n"); return 0; }
 
     // Resets the database
@@ -371,6 +478,8 @@ int load_database(void) {
 
     // Provide a cool debug print to prove it synced correctly!
     printf("Database loaded! Next new student will be #%d using prefix '%s'.\n", studentCount + 1, idPrefix);
+    // Remember this file so we can auto-update it later
+    strncpy(current_save_path, directory, NAME_SIZE);
     return 1;
 }
 
@@ -451,27 +560,50 @@ int add_data(char name[NAME_SIZE], int g1, int g2, int g3) {
 
 // Display all students in a formatted table showing their grades and average
 int view_database(void) {
-    if (studentCount == 0) {  // Check if database has any records
+    if (studentCount == 0 || head == NULL) { 
         printf("Database is empty, please enter data first.\n");
         return -1;
     }
-    printf("--- STUDENT RECORDS ---\n");
-    printf("-----------------------------------------------------------------------\n");
-    printf("Index | ID      | Name             | Math | Sci | Eng | Average | Remarks\n");
-    printf("-----------------------------------------------------------------------\n");
 
-    // Print each student's record with their average and pass/fail status
+    // 1. MEASURE PASS: Find the widest ID and Name in the database
+    // Start with minimum widths based on the column headers ("ID" is 2, "Name" is 4)
+    int max_id_len = 2;   
+    int max_name_len = 4; 
+    
+    StudentRecord *measurer = head;
+    while (measurer != NULL) {
+        int current_id_len = strlen(measurer->UID);
+        int current_name_len = strlen(measurer->name);
+        
+        if (current_id_len > max_id_len) max_id_len = current_id_len;
+        if (current_name_len > max_name_len) max_name_len = current_name_len;
+        
+        measurer = measurer->next_student;
+    }
+
+    // 2. CALCULATE TABLE WIDTH
+    // The fixed columns (Index, Math, Sci, Eng, Avg, Remarks) + separators take exactly 49 characters.
+    // Add the dynamic ID and Name lengths to get the exact table width.
+    int total_width = 49 + max_id_len + max_name_len;
+
+    // 3. RENDER PASS: Draw the dynamic UI
+    printf("--- STUDENT RECORDS ---\n");
+    print_separator(total_width);
+    
+    // Notice the %-*s modifiers. We pass max_id_len and max_name_len as arguments BEFORE the strings!
+    printf("%5s | %-*s | %-*s | %-4s | %-3s | %-3s | %-7s | %s\n", "Index", max_id_len, "ID", max_name_len, "Name", "Math", "Sci", "Eng", "Average", "Remarks");
+    print_separator(total_width);
+
     StudentRecord *walker = head;
     int index = 1;
     while (walker != NULL) {
         float avg = (walker->grades[0] + walker->grades[1] + walker->grades[2]) / 3.0f;
-        printf("%5d | %7.7s | %-16.16s | %-4d | %-3d | %-3d | %-7.2f | %s\n",
-               index, walker->UID, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],
-               avg, (avg >= 75.0f) ? "Passed" : "Failed");
+        
+        printf("%5d | %-*s | %-*s | %-4d | %-3d | %-3d | %-7.2f | %s\n",index, max_id_len, walker->UID, max_name_len, walker->name, walker->grades[0], walker->grades[1], walker->grades[2],avg, (avg >= 75.0f) ? "Passed" : "Failed");
         walker = walker->next_student;
         index++;
     }
-    printf("-----------------------------------------------------------------------\n");
+    print_separator(total_width);
     return 0;
 }
 
