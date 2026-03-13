@@ -477,6 +477,7 @@ int load_database(char *directory) {
     fclose(fp);
 
     // Provide a cool debug print to prove it synced correctly!
+    _beep(800, 500);
     printf("Database loaded! Next new student will be #%d using prefix '%s'.\n", studentCount + 1, idPrefix);
     // Remember this file so we can auto-update it later
     strncpy(current_save_path, directory, NAME_SIZE);
